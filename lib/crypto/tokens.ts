@@ -1,18 +1,20 @@
 import { createHash, randomBytes } from 'crypto';
 
 /**
- * Generates an unguessable 256-bit cryptographic token and its SHA-256 hash.
+ * Generates at least 32 cryptographically secure random bytes (256 bits).
+ * Encoded as a URL-safe Base64URL string (RFC 4648).
  * 
  * SECURITY MANDATE:
- * 1. The raw token is sent to the candidate in an email and is NEVER stored in the database.
+ * 1. The raw token is sent to the candidate in an email/pass URL and is NEVER stored in the database.
  * 2. Only `tokenHash` (SHA-256) is stored in `public.pass_tokens(token_hash)`.
- * 3. Lookup occurs by hashing incoming candidate URL tokens and matching the hash.
+ * 3. Lookup occurs by hashing the incoming token and matching the SHA-256 digest.
  */
 export function generateCandidatePassToken(): {
   rawToken: string;
   tokenHash: string;
 } {
-  const rawToken = randomBytes(32).toString('hex'); // 64 hex characters (256 bits)
+  const bytes = randomBytes(32); // 256 bits of cryptographic entropy
+  const rawToken = bytes.toString('base64url'); // URL-safe representation without padding
   const tokenHash = hashToken(rawToken);
 
   return { rawToken, tokenHash };
@@ -36,4 +38,32 @@ export function formatToIST(date: string | Date, includeSeconds = false): string
     timeStyle: includeSeconds ? 'medium' : 'short',
     hour12: true,
   }).format(d);
+}
+
+/**
+ * Server-side memory-based rate limiter for public pass lookups.
+ * Limits brute-force or automated scanning attempts per IP.
+ */
+const rateLimitWindowMs = 60 * 1000; // 1 minute window
+const maxAttemptsPerWindow = 30; // Max 30 lookups/min per IP
+const ipRequestCounts = new Map<string, { count: number; expiresAt: number }>();
+
+export function checkPassRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = ipRequestCounts.get(ip);
+
+  if (!record || now > record.expiresAt) {
+    ipRequestCounts.set(ip, {
+      count: 1,
+      expiresAt: now + rateLimitWindowMs,
+    });
+    return true; // Allowed
+  }
+
+  if (record.count >= maxAttemptsPerWindow) {
+    return false; // Rate-limited
+  }
+
+  record.count++;
+  return true; // Allowed
 }

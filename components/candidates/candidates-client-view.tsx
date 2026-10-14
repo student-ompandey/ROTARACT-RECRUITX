@@ -7,15 +7,21 @@ import { Badge } from '@/components/ui/badge';
 import { CandidateRosterItem } from '@/lib/services/candidate-query-service';
 import { ImportWizardModal } from '@/components/candidates/import-wizard-modal';
 import {
+  issueCandidatePassTokenAction,
+  revokeCandidatePassTokenAction,
+} from '@/lib/actions/pass-actions';
+import {
   Upload,
   Search,
-  Filter,
   Users,
   CheckCircle2,
   Clock,
-  Download,
-  Calendar,
-  Layers,
+  Key,
+  Trash2,
+  ExternalLink,
+  Copy,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 
 interface CandidatesClientViewProps {
@@ -33,6 +39,12 @@ export function CandidatesClientView({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [generatedPassUrl, setGeneratedPassUrl] = useState<{
+    candidateName: string;
+    url: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const filtered = initialCandidates.filter((c) => {
     const matchesSearch =
@@ -46,6 +58,35 @@ export function CandidatesClientView({
     return matchesSearch && matchesBranch && matchesStatus;
   });
 
+  async function handleIssuePass(candidateId: string, driveId: string, name: string) {
+    setActionMessage(null);
+    const res = await issueCandidatePassTokenAction(candidateId, driveId);
+    if (res.success && res.rawToken) {
+      const url = `${window.location.origin}/pass/${res.rawToken}`;
+      setGeneratedPassUrl({ candidateName: name, url });
+    } else {
+      setActionMessage(res.error || 'Failed to issue pass token');
+    }
+  }
+
+  async function handleRevokePass(candidateId: string, driveId: string) {
+    setActionMessage(null);
+    const res = await revokeCandidatePassTokenAction(candidateId, driveId);
+    if (res.success) {
+      setActionMessage('Pass token revoked successfully.');
+    } else {
+      setActionMessage(res.error || 'Failed to revoke token');
+    }
+  }
+
+  function handleCopyUrl() {
+    if (generatedPassUrl?.url) {
+      navigator.clipboard.writeText(generatedPassUrl.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <ImportWizardModal
@@ -54,12 +95,59 @@ export function CandidatesClientView({
         drives={drives}
       />
 
+      {/* Generated Token Modal Preview */}
+      {generatedPassUrl && (
+        <div className="p-4 bg-blue-950/40 border border-blue-800/80 rounded-xl space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-blue-200">
+              New Interview Pass Token Generated for {generatedPassUrl.candidateName}
+            </span>
+            <button
+              onClick={() => setGeneratedPassUrl(null)}
+              className="text-slate-400 hover:text-slate-200 text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            Copy this private link now. The raw token is not stored in plaintext in the database:
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              readOnly
+              value={generatedPassUrl.url}
+              className="flex-1 h-8 px-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 font-mono text-[11px] select-all"
+            />
+            <Button size="sm" variant="secondary" onClick={handleCopyUrl} className="h-8">
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'Copied' : 'Copy Link'}
+            </Button>
+            <a
+              href={generatedPassUrl.url}
+              target="_blank"
+              rel="noreferrer"
+              className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium flex items-center justify-center text-xs"
+            >
+              Open <ExternalLink className="w-3 h-3 ml-1" />
+            </a>
+          </div>
+        </div>
+      )}
+
+      {actionMessage && (
+        <div className="p-3 bg-slate-900 border border-slate-700 rounded-xl flex items-center gap-2 text-xs text-slate-300">
+          <AlertCircle className="w-4 h-4 text-blue-400 shrink-0" />
+          <span>{actionMessage}</span>
+        </div>
+      )}
+
       {/* Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-100 tracking-tight">Candidate Records</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Displaying {filtered.length} of {initialCandidates.length} enrolled candidates across all recruitment drives.
+            Displaying {filtered.length} of {initialCandidates.length} enrolled candidates.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -139,11 +227,11 @@ export function CandidatesClientView({
                 <tr>
                   <th className="px-4 py-3">Enrollment</th>
                   <th className="px-4 py-3">Candidate</th>
-                  <th className="px-4 py-3">Department & Year</th>
-                  <th className="px-4 py-3">Drive Context</th>
+                  <th className="px-4 py-3">Department</th>
                   <th className="px-4 py-3">Assigned Panel</th>
                   <th className="px-4 py-3">Interview Slot</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Pass Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
@@ -159,9 +247,6 @@ export function CandidatesClientView({
                     <td className="px-4 py-3.5 text-slate-300">
                       <div>{c.branch}</div>
                       <div className="text-[11px] text-slate-500">{c.yearOfStudy}</div>
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-400 text-[11px]">
-                      {c.driveName}
                     </td>
                     <td className="px-4 py-3.5 text-slate-300">
                       <span
@@ -191,6 +276,26 @@ export function CandidatesClientView({
                       >
                         {c.status}
                       </Badge>
+                    </td>
+                    <td className="px-4 py-3.5 text-right space-x-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleIssuePass(c.id, c.driveId, c.fullName)}
+                        title="Issue / Regenerate Pass Link"
+                        className="h-7 px-2 text-blue-400 hover:text-blue-300"
+                      >
+                        <Key className="w-3.5 h-3.5 mr-1" /> Issue Pass
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleRevokePass(c.id, c.driveId)}
+                        title="Revoke Pass Link"
+                        className="h-7 px-2 text-slate-500 hover:text-red-400"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </td>
                   </tr>
                 ))}
