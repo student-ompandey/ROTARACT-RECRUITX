@@ -36,6 +36,38 @@ export async function getCandidatesRoster(
   totalCount: number;
 }> {
   await requireAdmin();
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    const mockList = mockStore.candidates.map((c, idx) => ({
+      id: c.id,
+      driveId: c.drive_id,
+      driveName: 'Rotaract Induction Drive 2026-27',
+      enrollmentNo: c.enrollment_no,
+      fullName: c.full_name,
+      email: c.email,
+      phone: c.phone,
+      branch: c.branch,
+      yearOfStudy: c.year_of_study,
+      status: c.status,
+      createdAtFormatted: formatToIST(c.created_at),
+      panelName: `Panel ${(idx % 4) + 1}`,
+      slotFormatted: '16 Oct 2026, 10:00 AM – 10:05 AM',
+    }));
+
+    return {
+      candidates: mockList,
+      availableBranches: ['Computer Science', 'Textile Technology', 'Mechanical Engineering'],
+      totalCount: mockList.length,
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
 
   let query = supabase

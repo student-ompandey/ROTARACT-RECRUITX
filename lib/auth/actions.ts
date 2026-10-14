@@ -23,6 +23,19 @@ export async function signInAction(
     return { error: 'Please provide both email and password.' };
   }
 
+  // Graceful support for local demo testing when remote Supabase project is not yet provisioned
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const isConfigured = Boolean(
+    supabaseUrl &&
+    !supabaseUrl.includes('dummy') &&
+    !supabaseUrl.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    // In local demo mode, any test login or demo credentials redirect smoothly to dashboard
+    redirect(redirectTo);
+  }
+
   const supabase = await createServerSupabaseClient();
 
   const { error } = await supabase.auth.signInWithPassword({

@@ -53,6 +53,30 @@ export interface DriveDetailData {
  */
 export async function getDrivesList(): Promise<DriveListItem[]> {
   await requireAdmin();
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    return mockStore.drives.map((d) => ({
+      id: d.id,
+      name: d.name,
+      academicYear: d.academic_year,
+      status: d.status,
+      targetCandidates: d.target_candidates,
+      description: d.description,
+      startsAtFormatted: formatToIST(d.starts_at),
+      endsAtFormatted: d.ends_at ? formatToIST(d.ends_at) : 'Not specified',
+      panelsCount: mockStore.panels.filter((p) => p.drive_id === d.id).length,
+      candidatesCount: mockStore.candidates.filter((c) => c.drive_id === d.id).length,
+      assignmentsCount: mockStore.candidates.filter((c) => c.drive_id === d.id).length,
+    }));
+  }
+
   const supabase = await createServerSupabaseClient();
 
   const { data: drives, error } = await supabase
@@ -96,6 +120,53 @@ export async function getDrivesList(): Promise<DriveListItem[]> {
  */
 export async function getDriveDetail(driveId: string): Promise<DriveDetailData | null> {
   await requireAdmin();
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    const drive = mockStore.drives.find((d) => d.id === driveId) || mockStore.drives[0];
+    if (!drive) return null;
+
+    const panels = mockStore.panels
+      .filter((p) => p.drive_id === drive.id)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        meetLink: p.meet_link,
+        members: [
+          { userId: 'u1', fullName: 'Lead Evaluator', email: 'lead@rotaract.org', roleInPanel: 'lead' },
+          { userId: 'u2', fullName: 'Domain Evaluator', email: 'eval@rotaract.org', roleInPanel: 'evaluator' },
+        ],
+      }));
+
+    return {
+      id: drive.id,
+      name: drive.name,
+      academicYear: drive.academic_year,
+      status: drive.status,
+      targetCandidates: drive.target_candidates,
+      description: drive.description,
+      startsAt: drive.starts_at,
+      endsAt: drive.ends_at,
+      startsAtFormatted: formatToIST(drive.starts_at),
+      endsAtFormatted: drive.ends_at ? formatToIST(drive.ends_at) : 'TBD',
+      stats: {
+        totalCandidates: mockStore.candidates.filter((c) => c.drive_id === drive.id).length,
+        assignedInterviews: mockStore.candidates.filter((c) => c.drive_id === drive.id).length,
+        pendingScorecards: 1,
+        completedScorecards: 2,
+        panelsCount: panels.length,
+      },
+      panels,
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
 
   // 1. Fetch drive record
@@ -187,6 +258,23 @@ export async function getDriveDetail(driveId: string): Promise<DriveDetailData |
  */
 export async function getAvailableInterviewers() {
   await requireAdmin();
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    return mockStore.interviewers.map((i) => ({
+      id: i.id,
+      full_name: i.full_name,
+      email: i.email,
+      role: i.role,
+    }));
+  }
+
   const supabase = await createServerSupabaseClient();
 
   const { data: interviewers } = await supabase

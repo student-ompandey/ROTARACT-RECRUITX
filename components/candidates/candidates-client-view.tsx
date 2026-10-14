@@ -145,15 +145,15 @@ export function CandidatesClientView({
       {/* Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-100 tracking-tight">Candidate Records</h2>
+          <h2 className="text-xl font-bold text-slate-100 tracking-tight">Registered Students</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Displaying {filtered.length} of {initialCandidates.length} enrolled candidates.
+            Displaying {filtered.length} of {initialCandidates.length} enrolled students.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="primary" size="sm" onClick={() => setIsImportOpen(true)}>
             <Upload className="w-3.5 h-3.5" />
-            Import CSV Batch
+            Import Students (CSV)
           </Button>
         </div>
       </div>
@@ -225,28 +225,34 @@ export function CandidatesClientView({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-900/90 border-b border-slate-800 text-slate-400 font-medium">
                 <tr>
-                  <th className="px-4 py-3">Enrollment</th>
-                  <th className="px-4 py-3">Candidate</th>
-                  <th className="px-4 py-3">Department</th>
-                  <th className="px-4 py-3">Assigned Panel</th>
+                  <th className="px-4 py-3">Student Name</th>
+                  <th className="px-4 py-3">Enrollment Number</th>
+                  <th className="px-4 py-3">Branch</th>
+                  <th className="px-4 py-3">Academic Year</th>
                   <th className="px-4 py-3">Interview Slot</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Pass Actions</th>
+                  <th className="px-4 py-3">Recruitment Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
                 {filtered.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="px-4 py-3.5 font-mono text-slate-200 font-medium">
-                      {c.enrollmentNo}
-                    </td>
                     <td className="px-4 py-3.5">
                       <div className="font-semibold text-slate-100">{c.fullName}</div>
                       <div className="text-[11px] text-slate-500">{c.email}</div>
                     </td>
+                    <td className="px-4 py-3.5 font-mono text-slate-200 font-medium">
+                      {c.enrollmentNo}
+                    </td>
                     <td className="px-4 py-3.5 text-slate-300">
-                      <div>{c.branch}</div>
-                      <div className="text-[11px] text-slate-500">{c.yearOfStudy}</div>
+                      {c.branch}
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-400">
+                      {c.yearOfStudy}
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-300">
+                      <div className="text-slate-200 font-medium">{c.slotFormatted}</div>
+                      <div className="text-[11px] text-slate-500">{c.panelName}</div>
                     </td>
                     <td className="px-4 py-3.5 text-slate-300">
                       <span

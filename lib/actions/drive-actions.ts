@@ -56,6 +56,27 @@ export async function createDriveAction(formData: FormData): Promise<ActionRespo
     };
   }
 
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    const newDrive = mockStore.addDrive({
+      name: parsed.data.name,
+      academic_year: parsed.data.academicYear,
+      description: parsed.data.description || null,
+      target_candidates: parsed.data.targetCandidates,
+      starts_at: parsed.data.startsAt,
+      ends_at: parsed.data.endsAt,
+      status: parsed.data.status,
+    });
+    revalidatePath('/drives');
+    return { success: true, data: newDrive };
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data: drive, error } = await supabase
     .from('recruitment_drives')
@@ -213,6 +234,22 @@ export async function assignPanelMemberAction(
   userId: string,
   roleInPanel: 'lead' | 'evaluator' = 'evaluator'
 ): Promise<ActionResponse> {
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    const assigned = mockStore.assignMemberToPanel(driveId, panelId, userId, roleInPanel);
+    if (!assigned) {
+      return { success: false, error: 'This interviewer is already assigned or invalid.' };
+    }
+    revalidatePath(`/drives/${driveId}`);
+    return { success: true };
+  }
+
   const admin = await requireAdmin();
   const supabase = await createServerSupabaseClient();
 
@@ -258,6 +295,19 @@ export async function removePanelMemberAction(
   panelId: string,
   userId: string
 ): Promise<ActionResponse> {
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    mockStore.removeMemberFromPanel(panelId, userId);
+    revalidatePath(`/drives/${driveId}`);
+    return { success: true };
+  }
+
   const admin = await requireAdmin();
   const supabase = await createServerSupabaseClient();
 

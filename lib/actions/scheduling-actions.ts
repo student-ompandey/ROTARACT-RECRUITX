@@ -43,6 +43,44 @@ export async function previewSchedulePlanAction(configInput: unknown) {
   }
 
   const config = parsed.data;
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    const targetDrive =
+      mockStore.drives.find((d) => d.id === config.driveId) || mockStore.drives[0];
+    const availablePanels = mockStore.panels
+      .filter((p) => p.drive_id === targetDrive.id && config.panelIds.includes(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        meetLink: p.meet_link,
+      }));
+
+    const availableCandidates = mockStore.candidates
+      .filter((c) => c.drive_id === targetDrive.id)
+      .map((c) => ({
+        id: c.id,
+        fullName: c.full_name,
+        enrollmentNo: c.enrollment_no,
+      }));
+
+    if (availablePanels.length === 0) {
+      return { success: false, error: 'No valid panels found for this drive.' };
+    }
+
+    const plan = generateDraftSchedulePlan(config, availablePanels, availableCandidates);
+    return {
+      success: true,
+      data: plan,
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
 
   // 1. Fetch selected panels
@@ -96,6 +134,43 @@ export async function commitSchedulePlanAction(
   payload: CommitSchedulePayload
 ): Promise<CommitScheduleResult> {
   const admin = await requireAdmin();
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    let slotsCount = 0;
+    let assignmentsCount = 0;
+
+    for (const slot of payload.slots) {
+      slotsCount++;
+      if (slot.assignedCandidateId) {
+        assignmentsCount++;
+        const candidate = mockStore.candidates.find((c) => c.id === slot.assignedCandidateId);
+        if (candidate) {
+          candidate.assigned_panel_id = slot.panelId;
+          candidate.slot_starts_at = slot.startsAt;
+          candidate.slot_ends_at = slot.endsAt;
+          candidate.status = 'scheduled';
+        }
+      }
+    }
+
+    revalidatePath('/schedule');
+    revalidatePath('/candidates');
+    revalidatePath('/interviewer');
+    revalidatePath('/');
+
+    return {
+      success: true,
+      slotsCreated: slotsCount,
+      assignmentsCreated: assignmentsCount,
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
 
   if (!payload.slots || payload.slots.length === 0) {

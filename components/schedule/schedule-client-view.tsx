@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { DriveScheduleOverview } from '@/lib/services/schedule-query-service';
+import { DriveScheduleOverview, ScheduleSlotItem } from '@/lib/services/schedule-query-service';
 import { ScheduleGeneratorModal } from '@/components/schedule/schedule-generator-modal';
 import { updatePanelMeetLinkAction } from '@/lib/actions/scheduling-actions';
 import {
@@ -14,12 +15,13 @@ import {
   Shuffle,
   Users,
   CheckCircle2,
-  AlertCircle,
+  AlertTriangle,
   Layers,
   Search,
   ExternalLink,
   Edit2,
   Check,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface ScheduleClientViewProps {
@@ -43,11 +45,49 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
         </div>
         <h3 className="text-sm font-semibold text-slate-200">No recruitment drive active</h3>
         <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-          Create a recruitment drive in the Drives section before scheduling interviews.
+          Create a recruitment drive in the Settings section before scheduling interviews.
         </p>
       </Card>
     );
   }
+
+  // Detect Scheduling Conflicts: Same panel or same candidate with overlapping slots
+  const conflicts: Array<{ reason: string; slotId: string }> = [];
+  const panelSlotTimes: Record<string, Array<{ start: number; end: number; id: string }>> = {};
+  const candidateSlotTimes: Record<string, Array<{ start: number; end: number; id: string }>> = {};
+
+  overview.slots.forEach((s) => {
+    const start = new Date(s.startsAt).getTime();
+    const end = new Date(s.endsAt).getTime();
+
+    // Check same panel overlap
+    if (!panelSlotTimes[s.panelId]) panelSlotTimes[s.panelId] = [];
+    const hasPanelOverlap = panelSlotTimes[s.panelId].some(
+      (item) => (start >= item.start && start < item.end) || (end > item.start && end <= item.end)
+    );
+    if (hasPanelOverlap) {
+      conflicts.push({
+        reason: `Panel "${s.panelName}" has overlapping time slots.`,
+        slotId: s.id,
+      });
+    }
+    panelSlotTimes[s.panelId].push({ start, end, id: s.id });
+
+    // Check same candidate overlap
+    if (s.candidateId) {
+      if (!candidateSlotTimes[s.candidateId]) candidateSlotTimes[s.candidateId] = [];
+      const hasCandidateOverlap = candidateSlotTimes[s.candidateId].some(
+        (item) => (start >= item.start && start < item.end) || (end > item.start && end <= item.end)
+      );
+      if (hasCandidateOverlap) {
+        conflicts.push({
+          reason: `Student "${s.candidateName}" is booked for multiple simultaneous panels.`,
+          slotId: s.id,
+        });
+      }
+      candidateSlotTimes[s.candidateId].push({ start, end, id: s.id });
+    }
+  });
 
   const filteredSlots = overview.slots.filter((s) => {
     const matchesPanel =
@@ -57,6 +97,7 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
       (s.candidateName && s.candidateName.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (s.candidateEnrollment &&
         s.candidateEnrollment.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (s.candidateEmail && s.candidateEmail.toLowerCase().includes(searchQuery.toLowerCase())) ||
       s.panelName.toLowerCase().includes(searchQuery.toLowerCase());
 
     return matchesPanel && matchesSearch;
@@ -103,7 +144,7 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
           </div>
           <p className="text-xs text-slate-400 mt-1">
             {overview.driveName} · {overview.panels.length} Parallel Panels ·{' '}
-            {overview.assignedSlotsCount} of {overview.totalCandidates} Candidates Allocated
+            {overview.assignedSlotsCount} of {overview.totalCandidates} Students Scheduled
           </p>
         </div>
 
@@ -114,6 +155,19 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
           </Button>
         </div>
       </div>
+
+      {/* Conflict Detection Banner */}
+      {conflicts.length > 0 && (
+        <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-xl space-y-1 text-xs text-amber-200">
+          <div className="flex items-center gap-2 font-semibold text-amber-300">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Scheduling Conflicts Detected ({conflicts.length})</span>
+          </div>
+          <p className="text-[11px] text-amber-200/90 pl-6">
+            Different panels can conduct interviews simultaneously, but the same panel or student cannot overlap. Review the conflicts below or re-run the generator.
+          </p>
+        </div>
+      )}
 
       {/* Panels Summary Grid with Google Meet Configuration */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -189,7 +243,7 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search candidate name, enrollment number, or panel..."
+            placeholder="Search student name, enrollment, email, or panel..."
             className="w-full h-8 pl-8 pr-3 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
           />
         </div>
@@ -210,7 +264,7 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
         </div>
       </div>
 
-      {/* Schedule Table */}
+      {/* Schedule Table: 8 Clean Responsive Columns matching prompt specifications */}
       {filteredSlots.length === 0 ? (
         <Card className="p-12 text-center border-slate-800">
           <div className="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center mx-auto text-slate-400 mb-3">
@@ -220,7 +274,7 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
             {overview.totalSlotsCount > 0
               ? 'No slots match your search or panel filter.'
-              : 'Launch the Automated Schedule Generator to distribute candidates across panels within your interview window.'}
+              : 'Launch the Automated Schedule Generator to distribute students across panels within your interview window.'}
           </p>
           {overview.totalSlotsCount === 0 && (
             <div className="mt-4">
@@ -232,54 +286,105 @@ export function ScheduleClientView({ overview, drives }: ScheduleClientViewProps
         </Card>
       ) : (
         <Card className="overflow-hidden p-0 border-slate-800">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left text-xs min-w-[760px]">
               <thead className="bg-slate-900/90 border-b border-slate-800 text-slate-400 font-medium">
                 <tr>
-                  <th className="px-4 py-3">Slot Time (IST)</th>
-                  <th className="px-4 py-3">Interview Panel</th>
-                  <th className="px-4 py-3">Candidate Name</th>
-                  <th className="px-4 py-3">Enrollment</th>
-                  <th className="px-4 py-3">Department</th>
-                  <th className="px-4 py-3">Google Meet Room</th>
+                  <th className="px-4 py-3 min-w-[170px]">Student</th>
+                  <th className="px-4 py-3 min-w-[120px]">Enrollment Number</th>
+                  <th className="px-4 py-3 min-w-[130px]">Branch</th>
+                  <th className="px-4 py-3 min-w-[100px]">Academic Year</th>
+                  <th className="px-4 py-3 min-w-[160px]">Interview Slot</th>
+                  <th className="px-4 py-3 min-w-[130px]">Panel</th>
+                  <th className="px-4 py-3 min-w-[130px]">Status</th>
+                  <th className="px-4 py-3 text-right min-w-[110px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
-                {filteredSlots.map((slot) => (
-                  <tr key={slot.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="px-4 py-3.5 font-mono text-slate-300 font-medium whitespace-nowrap">
-                      {slot.startsAtFormatted.split(',')[1]} → {slot.endsAtFormatted.split(',')[1]}
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-blue-400">
-                      {slot.panelName}
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-100 font-medium">
-                      {slot.candidateName || (
-                        <span className="text-slate-500 italic">Empty Slot</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono text-slate-300">
-                      {slot.candidateEnrollment || '—'}
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-400">
-                      {slot.candidateBranch || '—'}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      {slot.meetLink ? (
-                        <a
-                          href={slot.meetLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 underline font-medium"
+                {filteredSlots.map((slot) => {
+                  const hasConflict = conflicts.some((c) => c.slotId === slot.id);
+
+                  return (
+                    <tr
+                      key={slot.id}
+                      className={`hover:bg-slate-800/30 transition-colors ${
+                        hasConflict ? 'bg-amber-950/20' : ''
+                      }`}
+                    >
+                      {/* Column 1: Student (Name + Email below) */}
+                      <td className="px-4 py-3.5">
+                        <div className="font-semibold text-slate-100">
+                          {slot.candidateName || <span className="text-slate-500 italic">Unassigned Slot</span>}
+                        </div>
+                        {slot.candidateEmail && (
+                          <div className="text-[11px] text-slate-500 mt-0.5">{slot.candidateEmail}</div>
+                        )}
+                      </td>
+
+                      {/* Column 2: Enrollment Number */}
+                      <td className="px-4 py-3.5 font-mono text-slate-300 font-medium">
+                        {slot.candidateEnrollment || '—'}
+                      </td>
+
+                      {/* Column 3: Branch */}
+                      <td className="px-4 py-3.5 text-slate-300">
+                        {slot.candidateBranch || '—'}
+                      </td>
+
+                      {/* Column 4: Academic Year */}
+                      <td className="px-4 py-3.5 text-slate-400">
+                        {slot.candidateYear || '1st Year'}
+                      </td>
+
+                      {/* Column 5: Interview Slot (Date on top, Start - End below) */}
+                      <td className="px-4 py-3.5">
+                        <div className="text-slate-200 font-medium">{slot.dateFormatted}</div>
+                        <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                          {slot.timeFormatted}
+                        </div>
+                      </td>
+
+                      {/* Column 6: Panel */}
+                      <td className="px-4 py-3.5">
+                        <span className="font-semibold text-blue-400">{slot.panelName}</span>
+                      </td>
+
+                      {/* Column 7: Status (Clean, unclipped badge) */}
+                      <td className="px-4 py-3.5">
+                        <Badge
+                          variant={
+                            slot.status === 'Evaluated'
+                              ? 'success'
+                              : slot.status === 'Scheduled'
+                              ? 'info'
+                              : slot.status === 'Evaluation Pending'
+                              ? 'warning'
+                              : 'outline'
+                          }
+                          className="text-[10px] whitespace-nowrap"
                         >
-                          <Video className="w-3.5 h-3.5" /> Join Room
-                        </a>
-                      ) : (
-                        <span className="text-slate-500 text-[11px]">Unconfigured</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                          {slot.status}
+                        </Badge>
+                      </td>
+
+                      {/* Column 8: Actions */}
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                        {slot.meetLink ? (
+                          <a
+                            href={slot.meetLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-medium"
+                          >
+                            <Video className="w-3.5 h-3.5" /> Join Room
+                          </a>
+                        ) : (
+                          <span className="text-slate-500 text-[11px]">No link</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

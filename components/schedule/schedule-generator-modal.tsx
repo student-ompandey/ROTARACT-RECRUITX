@@ -38,7 +38,7 @@ export function ScheduleGeneratorModal({
   totalCandidates,
   panels,
 }: ScheduleGeneratorModalProps) {
-  const [interviewDate, setInterviewDate] = useState('2026-10-20');
+  const [interviewDate, setInterviewDate] = useState('2026-10-16');
   const [startTime, setStartTime] = useState('10:00');
   const [endTime, setEndTime] = useState('12:00');
   const [slotDuration, setSlotDuration] = useState(5);

@@ -68,7 +68,7 @@ export async function getInterviewerWorkspace(): Promise<InterviewerDashboardDat
           enrollmentNo: '24TIT001',
           branch: 'Computer Science',
           yearOfStudy: '1st Year',
-          slotFormatted: '20 Oct 2026, 10:00 AM – 10:05 AM',
+          slotFormatted: '16 Oct 2026, 10:00 AM – 10:05 AM',
           scorecardStatus: 'pending',
         },
         {
@@ -83,7 +83,7 @@ export async function getInterviewerWorkspace(): Promise<InterviewerDashboardDat
           enrollmentNo: '24TIT015',
           branch: 'Textile Technology',
           yearOfStudy: '1st Year',
-          slotFormatted: '20 Oct 2026, 10:05 AM – 10:10 AM',
+          slotFormatted: '16 Oct 2026, 10:05 AM – 10:10 AM',
           scorecardStatus: 'submitted',
           overallScore: 4,
         },
@@ -227,7 +227,7 @@ export async function getAssignmentForEvaluation(assignmentId: string) {
       driveName: 'Rotaract Induction Drive 2026-27',
       panelName: 'Panel 1 — Technical & Web',
       meetLink: 'https://meet.google.com/rx-tech-demo',
-      slotFormatted: '20 Oct 2026, 10:00 AM – 10:05 AM',
+      slotFormatted: '16 Oct 2026, 10:00 AM – 10:05 AM',
       existingScorecard: null,
     };
   }

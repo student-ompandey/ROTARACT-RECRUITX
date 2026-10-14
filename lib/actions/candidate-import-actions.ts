@@ -60,20 +60,35 @@ export async function validateCandidateImportAction(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
-
-  // 1. Fetch existing enrollments and emails for this drive
-  const { data: existingRecords } = await supabase
-    .from('candidates')
-    .select('enrollment_no, email')
-    .eq('drive_id', payload.driveId);
-
-  const existingEnrollments = new Set(
-    (existingRecords || []).map((r) => r.enrollment_no.toUpperCase().trim())
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
   );
-  const existingEmails = new Set(
-    (existingRecords || []).map((r) => r.email.toLowerCase().trim())
-  );
+
+  let existingEnrollments = new Set<string>();
+  let existingEmails = new Set<string>();
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    mockStore.candidates.forEach((c) => {
+      existingEnrollments.add(c.enrollment_no.toUpperCase().trim());
+      existingEmails.add(c.email.toLowerCase().trim());
+    });
+  } else {
+    const supabase = await createServerSupabaseClient();
+    const { data: existingRecords } = await supabase
+      .from('candidates')
+      .select('enrollment_no, email')
+      .eq('drive_id', payload.driveId);
+
+    existingEnrollments = new Set(
+      (existingRecords || []).map((r) => r.enrollment_no.toUpperCase().trim())
+    );
+    existingEmails = new Set(
+      (existingRecords || []).map((r) => r.email.toLowerCase().trim())
+    );
+  }
 
   const seenEnrollmentsInFile = new Set<string>();
   const seenEmailsInFile = new Set<string>();
@@ -176,6 +191,40 @@ export async function commitCandidateImportAction(
       skippedCount: 0,
       failedCount: 0,
       error: 'No rows provided to commit.',
+    };
+  }
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    const { mockStore } = await import('@/lib/services/mock-store');
+    const result = mockStore.importCandidates(
+      payload.driveId,
+      payload.rowsToCommit.map((r) => ({
+        enrollment_no: r.enrollmentNo,
+        full_name: r.fullName,
+        email: r.email,
+        phone: r.phone || null,
+        branch: r.branch,
+        year_of_study: r.yearOfStudy,
+      })),
+      payload.duplicateAction
+    );
+
+    revalidatePath('/candidates');
+    revalidatePath('/students');
+    revalidatePath(`/drives/${payload.driveId}`);
+
+    return {
+      success: true,
+      createdCount: result.created,
+      updatedCount: result.updated,
+      skippedCount: result.skipped,
+      failedCount: 0,
     };
   }
 

@@ -13,8 +13,16 @@ export async function updateSession(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    // Allows preview or build environment to pass without breaking
+  const isConfigured = Boolean(
+    supabaseUrl &&
+    supabaseAnonKey &&
+    !supabaseUrl.includes('dummy') &&
+    !supabaseUrl.includes('your-project') &&
+    supabaseAnonKey.length > 20
+  );
+
+  if (!isConfigured || !supabaseUrl || !supabaseAnonKey) {
+    // In local demo mode, allow direct access without external Supabase auth server
     return supabaseResponse;
   }
 
@@ -23,7 +31,7 @@ export async function updateSession(request: NextRequest) {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         supabaseResponse = NextResponse.next({
           request,

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +47,7 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [commitResult, setCommitResult] = useState<ImportCommitResult | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   if (!isOpen) return null;
 
@@ -69,7 +71,7 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
         suggested[h] = 'branch';
       } else if (lower.includes('year') || lower.includes('sem')) {
         suggested[h] = 'yearOfStudy';
-      } else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('contact')) {
+      } else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('contact') || lower === 'number' || lower.includes('no.')) {
         suggested[h] = 'phone';
       } else {
         suggested[h] = 'ignore';
@@ -78,30 +80,121 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
     setColumnMapping(suggested);
   }
 
-  // Step 1: Handle CSV File Upload
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Unified File Parser supporting CSV and Excel (.xlsx, .xls)
+  async function processSpreadsheetFile(file: File) {
     setErrorMessage(null);
-    Papa.parse<Record<string, string>>(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (!results.meta.fields || results.meta.fields.length === 0) {
-          setErrorMessage('Could not find column headers in the CSV file.');
+    const fileName = file.name.toLowerCase();
+
+    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      // Excel File Parsing
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        if (!firstSheetName) {
+          setErrorMessage('The Excel file has no readable sheets.');
           return;
         }
 
-        setRawHeaders(results.meta.fields);
-        setRawRows(results.data);
-        autoSuggestMapping(results.meta.fields);
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, {
+          defval: '',
+          raw: false,
+        });
+
+        if (jsonData.length === 0) {
+          setErrorMessage('No student data found in the Excel sheet.');
+          return;
+        }
+
+        const headers = Object.keys(jsonData[0] || {});
+        if (headers.length === 0) {
+          setErrorMessage('Could not find column headers in the Excel file.');
+          return;
+        }
+
+        // Convert all values to strings
+        const stringRows: Record<string, string>[] = jsonData.map((row) => {
+          const formattedRow: Record<string, string> = {};
+          Object.entries(row).forEach(([k, v]) => {
+            formattedRow[k] = v !== null && v !== undefined ? String(v).trim() : '';
+          });
+          return formattedRow;
+        });
+
+        setRawHeaders(headers);
+        setRawRows(stringRows);
+        autoSuggestMapping(headers);
         setCurrentStep('mapping');
-      },
-      error: (err) => {
-        setErrorMessage(`Failed to parse CSV: ${err.message}`);
-      },
-    });
+      } catch (err: any) {
+        setErrorMessage(`Failed to parse Excel file: ${err.message || 'Unknown format'}`);
+      }
+    } else {
+      // CSV File Parsing via PapaParse
+      Papa.parse<Record<string, string>>(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (!results.meta.fields || results.meta.fields.length === 0) {
+            setErrorMessage('Could not find column headers in the CSV file.');
+            return;
+          }
+
+          setRawHeaders(results.meta.fields);
+          setRawRows(results.data);
+          autoSuggestMapping(results.meta.fields);
+          setCurrentStep('mapping');
+        },
+        error: (err) => {
+          setErrorMessage(`Failed to parse CSV: ${err.message}`);
+        },
+      });
+    }
+  }
+
+  // Step 1: Handle File Upload via file dialog
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      processSpreadsheetFile(file);
+    }
+  }
+
+  // Drag & Drop Handlers
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      const name = file.name.toLowerCase();
+      const isValidFormat =
+        name.endsWith('.csv') ||
+        name.endsWith('.xlsx') ||
+        name.endsWith('.xls') ||
+        file.type === 'text/csv' ||
+        file.type.includes('spreadsheet') ||
+        file.type.includes('excel');
+
+      if (!isValidFormat) {
+        setErrorMessage('Please upload a valid .csv, .xlsx, or .xls spreadsheet file.');
+        return;
+      }
+      processSpreadsheetFile(file);
+    }
   }
 
   // Step 2: Validate Mapped Data
@@ -251,26 +344,41 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
                 </select>
               </div>
 
-              <div className="border-2 border-dashed border-slate-700 hover:border-blue-500/60 rounded-2xl p-8 text-center transition-colors">
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
+                  isDragging
+                    ? 'border-blue-400 bg-blue-950/40 ring-4 ring-blue-500/20 scale-[1.01]'
+                    : 'border-slate-700 hover:border-blue-500/60 bg-slate-900/30'
+                }`}
+              >
                 <input
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,.xlsx,.xls"
                   onChange={handleFileUpload}
                   id="csv-file-input"
                   className="hidden"
                 />
                 <label
                   htmlFor="csv-file-input"
-                  className="cursor-pointer flex flex-col items-center justify-center space-y-2"
+                  className="cursor-pointer flex flex-col items-center justify-center space-y-2.5"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-blue-950/80 border border-blue-800/60 flex items-center justify-center text-blue-400">
-                    <Upload className="w-6 h-6" />
+                  <div
+                    className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-transform ${
+                      isDragging
+                        ? 'bg-blue-600 text-white scale-110 shadow-lg shadow-blue-500/30'
+                        : 'bg-blue-950/80 border border-blue-800/60 text-blue-400'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-7 h-7" />
                   </div>
-                  <span className="text-sm font-semibold text-slate-200">
-                    Click to select candidate CSV file
+                  <span className="text-sm font-semibold text-slate-100">
+                    {isDragging ? 'Drop Excel / CSV file here now' : 'Drag & Drop Excel (.xlsx, .xls) or CSV file, or browse'}
                   </span>
                   <span className="text-xs text-slate-400 max-w-sm">
-                    Maximum 500 rows per batch. Supports standard institutional export formats.
+                    Drop your student registration file directly here (.xlsx, .xls, .csv). Up to 500 records per batch.
                   </span>
                 </label>
               </div>

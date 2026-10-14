@@ -101,6 +101,25 @@ export default function LoginPage() {
             </form>
 
             <div className="mt-6 pt-4 border-t border-slate-800/80 text-center space-y-2">
+              <div className="p-2.5 rounded-lg bg-blue-950/40 border border-blue-800/40 text-[11px] text-blue-300">
+                <span className="font-semibold block text-slate-200 mb-0.5">🚀 Demo Quick Access</span>
+                Any email/password or click below to directly enter the portal:
+                <div className="mt-2 flex gap-2 justify-center">
+                  <a
+                    href="/"
+                    className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] transition-colors"
+                  >
+                    Enter Admin Dashboard →
+                  </a>
+                  <a
+                    href="/interviewer"
+                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] border border-slate-700 transition-colors"
+                  >
+                    Interviewer Portal →
+                  </a>
+                </div>
+              </div>
+
               <p className="text-[11px] text-slate-500">
                 Self-registration is disabled for security compliance.
               </p>
