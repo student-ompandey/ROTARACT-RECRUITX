@@ -22,10 +22,22 @@ export async function issueCandidatePassTokenAction(
   expiryHours = 72
 ): Promise<PassManagementResult> {
   const admin = await requireAdmin();
-  const supabase = await createServerSupabaseClient();
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
 
   const { rawToken, tokenHash } = generateCandidatePassToken();
   const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000).toISOString();
+
+  if (!isConfigured) {
+    revalidatePath('/candidates');
+    return { success: true, rawToken };
+  }
+
+  const supabase = await createServerSupabaseClient();
 
   // Upsert token hash on candidate_id
   const { error } = await supabase.from('pass_tokens').upsert(
@@ -67,6 +79,18 @@ export async function revokeCandidatePassTokenAction(
   driveId: string
 ): Promise<PassManagementResult> {
   const admin = await requireAdmin();
+
+  const isConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('dummy') &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
+  );
+
+  if (!isConfigured) {
+    revalidatePath('/candidates');
+    return { success: true };
+  }
+
   const supabase = await createServerSupabaseClient();
 
   const { error } = await supabase

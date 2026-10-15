@@ -39,6 +39,8 @@ export interface InMemoryCandidate {
   phone: string | null;
   branch: string;
   year_of_study: string;
+  interviewer_name?: string | null;
+  interview_link?: string | null;
   status: 'applied' | 'scheduled' | 'interviewed' | 'selected' | 'waitlisted' | 'rejected';
   assigned_panel_id?: string;
   slot_starts_at?: string;
@@ -289,6 +291,8 @@ class MockDataStore {
           existing.branch = r.branch;
           existing.year_of_study = r.year_of_study;
           existing.phone = r.phone;
+          existing.interviewer_name = r.interviewer_name || existing.interviewer_name || null;
+          existing.interview_link = r.interview_link || existing.interview_link || null;
           updated++;
         }
       } else {
@@ -301,6 +305,8 @@ class MockDataStore {
           phone: r.phone || null,
           branch: r.branch || 'General',
           year_of_study: r.year_of_study || '1st Year',
+          interviewer_name: r.interviewer_name || null,
+          interview_link: r.interview_link || null,
           status: 'applied',
           created_at: new Date().toISOString(),
         });

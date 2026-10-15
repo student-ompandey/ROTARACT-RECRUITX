@@ -22,6 +22,8 @@ export interface ValidateImportPayload {
     branch?: string;
     yearOfStudy?: string;
     phone?: string;
+    interviewerName?: string;
+    interviewLink?: string;
   }>;
 }
 
@@ -211,6 +213,8 @@ export async function commitCandidateImportAction(
         phone: r.phone || null,
         branch: r.branch,
         year_of_study: r.yearOfStudy,
+        interviewer_name: r.interviewerName,
+        interview_link: r.interviewLink,
       })),
       payload.duplicateAction
     );
@@ -247,6 +251,8 @@ export async function commitCandidateImportAction(
         branch: row.branch,
         year_of_study: row.yearOfStudy,
         phone: row.phone || null,
+        interviewer_name: row.interviewerName,
+        interview_link: row.interviewLink,
         import_batch_id: batchId,
         status: 'pending' as const,
       };

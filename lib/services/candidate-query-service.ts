@@ -12,6 +12,8 @@ export interface CandidateRosterItem {
   phone: string | null;
   branch: string;
   yearOfStudy: string;
+  interviewerName: string;
+  interviewLink: string;
   status: string;
   createdAtFormatted: string;
   panelName: string;
@@ -55,6 +57,8 @@ export async function getCandidatesRoster(
       phone: c.phone,
       branch: c.branch,
       yearOfStudy: c.year_of_study,
+      interviewerName: c.interviewer_name || (idx % 2 === 0 ? 'Aayush Batra' : 'Simran Kaur'),
+      interviewLink: c.interview_link || 'https://meet.google.com/rx-tech-demo',
       status: c.status,
       createdAtFormatted: formatToIST(c.created_at),
       panelName: `Panel ${(idx % 4) + 1}`,
@@ -81,6 +85,8 @@ export async function getCandidatesRoster(
       phone,
       branch,
       year_of_study,
+      interviewer_name,
+      interview_link,
       status,
       created_at,
       recruitment_drives (
@@ -90,7 +96,8 @@ export async function getCandidatesRoster(
         interview_slots (
           starts_at,
           interview_panels (
-            name
+            name,
+            meet_link
           )
         )
       )
@@ -131,6 +138,9 @@ export async function getCandidatesRoster(
     const slot = assignment?.interview_slots;
     const panelName = slot?.interview_panels?.name || 'Unassigned';
     const slotFormatted = slot?.starts_at ? formatToIST(slot.starts_at) : 'Not scheduled';
+    const effectiveInterviewLink =
+      r.interview_link || slot?.interview_panels?.meet_link || 'Not provided';
+    const effectiveInterviewerName = r.interviewer_name || 'Unassigned';
 
     return {
       id: r.id,
@@ -142,6 +152,8 @@ export async function getCandidatesRoster(
       phone: r.phone,
       branch: r.branch,
       yearOfStudy: r.year_of_study,
+      interviewerName: effectiveInterviewerName,
+      interviewLink: effectiveInterviewLink,
       status: r.status,
       createdAtFormatted: formatToIST(r.created_at),
       panelName,

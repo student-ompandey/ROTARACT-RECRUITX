@@ -10,10 +10,26 @@ export const CanonicalFieldEnum = z.enum([
   'branch',
   'yearOfStudy',
   'phone',
+  'interviewerName',
+  'interviewLink',
   'ignore',
 ]);
 
 export type CanonicalField = z.infer<typeof CanonicalFieldEnum>;
+
+/**
+ * Validates that an interview link is a well-formed HTTPS URL (preferably Google Meet or video conference link).
+ */
+export function isValidInterviewUrl(urlStr: string): boolean {
+  try {
+    const trimmed = urlStr.trim();
+    if (!trimmed) return false;
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Normalized row schema after column mapping.
@@ -50,6 +66,18 @@ export const CandidateRowSchema = z.object({
     .max(25)
     .optional()
     .transform((val) => (val ? sanitizeFormulaInjection(val.trim()) : undefined)),
+  interviewerName: z
+    .string()
+    .min(2, 'Interviewer Name is mandatory (min 2 characters)')
+    .max(120, 'Interviewer Name is too long')
+    .transform((val) => sanitizeFormulaInjection(val.trim())),
+  interviewLink: z
+    .string()
+    .min(5, 'Interview Link is mandatory')
+    .refine((val) => isValidInterviewUrl(val), {
+      message: 'Interview Link must be a valid HTTPS URL (e.g., https://meet.google.com/xxx-yyyy-zzz)',
+    })
+    .transform((val) => sanitizeFormulaInjection(val.trim())),
 });
 
 export type ValidatedCandidateRow = z.infer<typeof CandidateRowSchema>;

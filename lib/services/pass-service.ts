@@ -54,8 +54,8 @@ export async function getVerifiedPass(
         driveName: 'Rotaract Induction Drive 2026-27',
         panelName: 'Panel 1 — Technical & Web',
         meetLink: 'https://meet.google.com/rx-tech-demo',
-        startsAtFormatted: '20 Oct 2026, 10:00 AM',
-        endsAtFormatted: '20 Oct 2026, 10:05 AM',
+        startsAtFormatted: '16 Oct 2026, 10:00 AM',
+        endsAtFormatted: '16 Oct 2026, 10:05 AM',
         timezone: 'Asia/Kolkata (IST)',
         isValid: true,
       };

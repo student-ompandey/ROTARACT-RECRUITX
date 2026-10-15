@@ -48,6 +48,16 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [commitResult, setCommitResult] = useState<ImportCommitResult | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [fileName, setFileName] = useState<string>('students');
+  const [autoDeduplicate, setAutoDeduplicate] = useState<boolean>(true);
+  const [removedDuplicatesCount, setRemovedDuplicatesCount] = useState<number>(0);
+  const [quickCleanStats, setQuickCleanStats] = useState<{
+    total: number;
+    unique: number;
+    removed: number;
+    enrollmentHeader: string;
+    cleanedRows: Record<string, any>[];
+  } | null>(null);
 
   if (!isOpen) return null;
 
@@ -56,7 +66,33 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
     const suggested: Record<string, CanonicalField> = {};
     headers.forEach((h) => {
       const lower = h.toLowerCase().trim();
-      if (lower.includes('name') || lower.includes('candidate')) {
+      if (
+        lower.includes('interviewer') ||
+        lower.includes('panelist') ||
+        lower.includes('evaluator') ||
+        lower.includes('taken by') ||
+        lower.includes('faculty') ||
+        lower === 'interviewer' ||
+        lower === 'interviewer name'
+      ) {
+        suggested[h] = 'interviewerName';
+      } else if (
+        lower.includes('link') ||
+        lower.includes('meet') ||
+        lower.includes('url') ||
+        lower.includes('gmeet') ||
+        lower.includes('teams') ||
+        lower.includes('zoom')
+      ) {
+        suggested[h] = 'interviewLink';
+      } else if (
+        lower === 'name' ||
+        lower === 'candidate name' ||
+        lower === 'student name' ||
+        lower === 'full name' ||
+        (lower.includes('name') && !lower.includes('interviewer')) ||
+        lower.includes('candidate')
+      ) {
         suggested[h] = 'fullName';
       } else if (
         lower.includes('enroll') ||
@@ -71,7 +107,13 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
         suggested[h] = 'branch';
       } else if (lower.includes('year') || lower.includes('sem')) {
         suggested[h] = 'yearOfStudy';
-      } else if (lower.includes('phone') || lower.includes('mobile') || lower.includes('contact') || lower === 'number' || lower.includes('no.')) {
+      } else if (
+        lower.includes('phone') ||
+        lower.includes('mobile') ||
+        lower.includes('contact') ||
+        lower === 'number' ||
+        lower.includes('no.')
+      ) {
         suggested[h] = 'phone';
       } else {
         suggested[h] = 'ignore';
@@ -83,9 +125,11 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
   // Unified File Parser supporting CSV and Excel (.xlsx, .xls)
   async function processSpreadsheetFile(file: File) {
     setErrorMessage(null);
-    const fileName = file.name.toLowerCase();
+    const originalName = file.name.replace(/\.[^/.]+$/, '');
+    setFileName(originalName || 'students');
+    const lowerName = file.name.toLowerCase();
 
-    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+    if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
       // Excel File Parsing
       try {
         const buffer = await file.arrayBuffer();
@@ -122,6 +166,40 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
           return formattedRow;
         });
 
+        // Helper to find enrollment column header
+        const detectEnrollmentHeader = (hdrs: string[]) => {
+          return (
+            hdrs.find((h) => {
+              const l = h.toLowerCase().trim();
+              return l.includes('enroll') || l.includes('roll') || l.includes('reg') || l === 'id';
+            }) || hdrs[0] || ''
+          );
+        };
+
+        const enrCol = detectEnrollmentHeader(headers);
+        const seenEnr = new Set<string>();
+        const uniqueCleanedRows: Record<string, string>[] = [];
+
+        for (const row of stringRows) {
+          const rawVal = enrCol ? String(row[enrCol] || '').trim().toUpperCase() : '';
+          if (rawVal) {
+            if (!seenEnr.has(rawVal)) {
+              seenEnr.add(rawVal);
+              uniqueCleanedRows.push(row);
+            }
+          } else {
+            uniqueCleanedRows.push(row);
+          }
+        }
+
+        setQuickCleanStats({
+          total: stringRows.length,
+          unique: uniqueCleanedRows.length,
+          removed: stringRows.length - uniqueCleanedRows.length,
+          enrollmentHeader: enrCol,
+          cleanedRows: uniqueCleanedRows,
+        });
+
         setRawHeaders(headers);
         setRawRows(stringRows);
         autoSuggestMapping(headers);
@@ -140,9 +218,41 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
             return;
           }
 
-          setRawHeaders(results.meta.fields);
-          setRawRows(results.data);
-          autoSuggestMapping(results.meta.fields);
+          const headers = results.meta.fields;
+          const rows = results.data;
+
+          const enrCol =
+            headers.find((h) => {
+              const l = h.toLowerCase().trim();
+              return l.includes('enroll') || l.includes('roll') || l.includes('reg') || l === 'id';
+            }) || headers[0] || '';
+
+          const seenEnr = new Set<string>();
+          const uniqueCleanedRows: Record<string, string>[] = [];
+
+          for (const row of rows) {
+            const rawVal = enrCol ? String(row[enrCol] || '').trim().toUpperCase() : '';
+            if (rawVal) {
+              if (!seenEnr.has(rawVal)) {
+                seenEnr.add(rawVal);
+                uniqueCleanedRows.push(row);
+              }
+            } else {
+              uniqueCleanedRows.push(row);
+            }
+          }
+
+          setQuickCleanStats({
+            total: rows.length,
+            unique: uniqueCleanedRows.length,
+            removed: rows.length - uniqueCleanedRows.length,
+            enrollmentHeader: enrCol,
+            cleanedRows: uniqueCleanedRows,
+          });
+
+          setRawHeaders(headers);
+          setRawRows(rows);
+          autoSuggestMapping(headers);
           setCurrentStep('mapping');
         },
         error: (err) => {
@@ -197,21 +307,127 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
     }
   }
 
-  // Step 2: Validate Mapped Data
+  // Export unique valid student records to an Excel (.xlsx / .xls compatible) file
+  function handleDownloadUniqueXls() {
+    if (!validationSummary) return;
+
+    // Filter valid unique candidate rows
+    const uniqueValidRows = validationSummary.rows
+      .filter((r) => r.isValid && !r.isDuplicateInFile)
+      .map((r, index) => ({
+        'S.No': index + 1,
+        'Full Name': r.data.fullName || '',
+        'Enrollment Number': r.data.enrollmentNo || '',
+        'Email Address': r.data.email || '',
+        'Phone Number': r.data.phone || '',
+        'Department / Branch': r.data.branch || 'General',
+        'Year of Study': r.data.yearOfStudy || '1st Year',
+        'Interviewer Name': r.data.interviewerName || '',
+        'Interview Link': r.data.interviewLink || '',
+        'Database Status': r.isExistingInDb ? 'Existing in DB' : 'New Candidate',
+      }));
+
+    if (uniqueValidRows.length === 0) {
+      setErrorMessage('No unique valid records available to download.');
+      return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(uniqueValidRows);
+
+    // Auto-size columns for neat formatting in Excel
+    const colWidths = [
+      { wch: 6 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 30 },
+      { wch: 16 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 38 },
+      { wch: 16 },
+    ];
+    worksheet['!cols'] = colWidths;
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Unique Students');
+
+    const downloadFileName = `${fileName}_unique_cleaned.xlsx`;
+    XLSX.writeFile(workbook, downloadFileName, { bookType: 'xlsx' });
+  }
+
+  // Instant 1-Click Clean & Download Excel: Removes duplicate enrollment numbers and keeps all uploaded columns exactly as-is
+  function handleDownloadQuickCleanedXls() {
+    if (!quickCleanStats || quickCleanStats.cleanedRows.length === 0) {
+      setErrorMessage('No cleaned rows available to download.');
+      return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(quickCleanStats.cleanedRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Cleaned Unique Students');
+
+    const downloadFileName = `${fileName}_unique_by_enrollment.xlsx`;
+    XLSX.writeFile(workbook, downloadFileName, { bookType: 'xlsx' });
+  }
+
+  // Step 2: Validate Mapped Data with optional In-Memory De-duplication
   async function handleValidateMapping() {
-    setIsLoading(true);
     setErrorMessage(null);
 
+    // Mandatory Column Mapping Validation
+    const mappedTargets = Object.values(columnMapping);
+    const missingRequired: string[] = [];
+    if (!mappedTargets.includes('fullName')) missingRequired.push('Full Name');
+    if (!mappedTargets.includes('enrollmentNo')) missingRequired.push('Enrollment Number');
+    if (!mappedTargets.includes('email')) missingRequired.push('Email Address');
+    if (!mappedTargets.includes('interviewerName')) missingRequired.push('Interviewer Name');
+    if (!mappedTargets.includes('interviewLink')) missingRequired.push('Interview Link');
+
+    if (missingRequired.length > 0) {
+      setErrorMessage(
+        `Mandatory column mapping missing: Please map ${missingRequired.join(', ')} before validating.`
+      );
+      return;
+    }
+
+    setIsLoading(true);
+
     // Transform raw rows into mapped rows
-    const mappedRows = rawRows.map((row) => {
+    let mappedRows = rawRows.map((row) => {
       const mapped: Record<string, string> = {};
       Object.entries(columnMapping).forEach(([header, targetField]) => {
         if (targetField !== 'ignore') {
-          mapped[targetField] = row[header] || '';
+          mapped[targetField] = (row[header] || '').trim();
         }
       });
       return mapped;
     });
+
+    // If auto-deduplication is enabled, strip in-file duplicates immediately so only unique students (by Name & Enrollment No) remain
+    let removedDupes = 0;
+    if (autoDeduplicate) {
+      const seenIdentity = new Set<string>();
+      const uniqueRows: typeof mappedRows = [];
+
+      for (const row of mappedRows) {
+        const nameKey = (row.fullName || '').toLowerCase().trim();
+        const enrKey = (row.enrollmentNo || '').toUpperCase().trim();
+        
+        // Deduplicate strictly on the basis of Full Name and Enrollment Number
+        const identityKey = `${nameKey}:::${enrKey}`;
+
+        if (seenIdentity.has(identityKey)) {
+          removedDupes++;
+        } else {
+          seenIdentity.add(identityKey);
+          uniqueRows.push(row);
+        }
+      }
+
+      mappedRows = uniqueRows;
+    }
+    setRemovedDuplicatesCount(removedDupes);
 
     const res = await validateCandidateImportAction({
       driveId: selectedDriveId,
@@ -384,9 +600,9 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
               </div>
 
               <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <span className="font-semibold text-slate-300 block">Required CSV Data:</span>
-                <p>• Student Name, Enrollment Number (e.g. 24TIT001), Email Address</p>
-                <p>• Department/Branch and Year of Study (optional, defaults provided)</p>
+                <span className="font-semibold text-slate-300 block">Required Spreadsheet Data:</span>
+                <p>• Mandatory: Student Name, Enrollment Number, Email Address, Interviewer Name, Interview Link (HTTPS)</p>
+                <p>• Optional: Department/Branch and Year of Study (defaults applied if omitted)</p>
               </div>
             </div>
           )}
@@ -430,6 +646,8 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
                       <option value="fullName">Full Name (Required)</option>
                       <option value="enrollmentNo">Enrollment No. (Required)</option>
                       <option value="email">Email Address (Required)</option>
+                      <option value="interviewerName">Interviewer Name (Required)</option>
+                      <option value="interviewLink">Interview Link (Required — HTTPS)</option>
                       <option value="branch">Branch / Course</option>
                       <option value="yearOfStudy">Year of Study</option>
                       <option value="phone">Phone / Mobile</option>
@@ -438,38 +656,116 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
                   </div>
                 ))}
               </div>
+
+              {/* Quick 1-Click Clean & Download by Enrollment No */}
+              {quickCleanStats && (
+                <div className="p-4 bg-emerald-950/30 border border-emerald-800/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="font-semibold text-emerald-200">
+                        Quick Clean: Unique by Enrollment No.
+                      </span>
+                      {quickCleanStats.removed > 0 ? (
+                        <Badge variant="warning">{quickCleanStats.removed} Duplicates Detected</Badge>
+                      ) : (
+                        <Badge variant="success">All {quickCleanStats.total} Unique</Badge>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-1">
+                      Column matched: <strong className="text-white">"{quickCleanStats.enrollmentHeader}"</strong>. Keeps all original columns intact with unique students.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDownloadQuickCleanedXls}
+                    className="border-emerald-700/80 bg-emerald-950/60 hover:bg-emerald-900 text-emerald-200 hover:text-white shrink-0 font-medium"
+                    title="Download Excel file immediately with all original columns and duplicates removed by enrollment number"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                    Download Cleaned Excel ({quickCleanStats.unique} rows)
+                  </Button>
+                </div>
+              )}
+
+              {/* Deduplication Switch */}
+              <div className="p-3 bg-blue-950/30 border border-blue-900/50 rounded-xl flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-semibold text-blue-200 block">
+                    Remove Duplicate Student Entries for Import
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Automatically filter out repeated records matching on Student Name & Enrollment Number so only unique students proceed to import & XLS export.
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoDeduplicate}
+                    onChange={(e) => setAutoDeduplicate(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
             </div>
           )}
 
           {/* STEP 3: PREVIEW & VALIDATION */}
           {currentStep === 'preview' && validationSummary && (
             <div className="space-y-4">
-              {/* Summary Metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                <div className="p-2.5 bg-slate-900/60 rounded-lg border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Total Rows</span>
-                  <span className="font-semibold text-slate-200 text-sm">
-                    {validationSummary.totalRows}
-                  </span>
+              {removedDuplicatesCount > 0 && (
+                <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl flex items-center justify-between text-xs text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      Filtered out <strong className="text-white">{removedDuplicatesCount} duplicate record(s)</strong> from uploaded file. Retaining only unique students.
+                    </span>
+                  </div>
+                  <Badge variant="warning">{removedDuplicatesCount} Removed</Badge>
                 </div>
-                <div className="p-2.5 bg-emerald-950/30 rounded-lg border border-emerald-900/40">
-                  <span className="text-emerald-400 block text-[10px]">Ready to Import</span>
-                  <span className="font-semibold text-emerald-300 text-sm">
-                    {validationSummary.validRowsCount}
-                  </span>
+              )}
+
+              {/* Summary Metrics & Download XLS Trigger */}
+              <div className="flex items-center justify-between">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs flex-1 mr-3">
+                  <div className="p-2.5 bg-slate-900/60 rounded-lg border border-slate-800">
+                    <span className="text-slate-500 block text-[10px]">Unique Records</span>
+                    <span className="font-semibold text-slate-200 text-sm">
+                      {validationSummary.totalRows}
+                    </span>
+                  </div>
+                  <div className="p-2.5 bg-emerald-950/30 rounded-lg border border-emerald-900/40">
+                    <span className="text-emerald-400 block text-[10px]">Ready to Import</span>
+                    <span className="font-semibold text-emerald-300 text-sm">
+                      {validationSummary.validRowsCount}
+                    </span>
+                  </div>
+                  <div className="p-2.5 bg-amber-950/30 rounded-lg border border-amber-900/40">
+                    <span className="text-amber-400 block text-[10px]">Existing in Database</span>
+                    <span className="font-semibold text-amber-300 text-sm">
+                      {validationSummary.existingInDbCount}
+                    </span>
+                  </div>
+                  <div className="p-2.5 bg-red-950/30 rounded-lg border border-red-900/40">
+                    <span className="text-red-400 block text-[10px]">Invalid / Errors</span>
+                    <span className="font-semibold text-red-300 text-sm">
+                      {validationSummary.invalidRowsCount}
+                    </span>
+                  </div>
                 </div>
-                <div className="p-2.5 bg-amber-950/30 rounded-lg border border-amber-900/40">
-                  <span className="text-amber-400 block text-[10px]">Existing in Database</span>
-                  <span className="font-semibold text-amber-300 text-sm">
-                    {validationSummary.existingInDbCount}
-                  </span>
-                </div>
-                <div className="p-2.5 bg-red-950/30 rounded-lg border border-red-900/40">
-                  <span className="text-red-400 block text-[10px]">Invalid / Conflicts</span>
-                  <span className="font-semibold text-red-300 text-sm">
-                    {validationSummary.invalidRowsCount}
-                  </span>
-                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleDownloadUniqueXls}
+                  className="h-10 border-blue-700/60 bg-blue-950/40 hover:bg-blue-900/60 text-blue-300 hover:text-white shrink-0"
+                  title="Download unique student records as an Excel (.xlsx / .xls) spreadsheet"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  Download Unique (.xlsx)
+                </Button>
               </div>
 
               {/* Duplicate Handling Policy Selection */}
@@ -503,7 +799,7 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
               </div>
 
               {/* Row Inspection Table */}
-              <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-800 text-xs">
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-800 text-xs">
                 <table className="w-full text-left">
                   <thead className="bg-slate-900/90 text-slate-400 sticky top-0 border-b border-slate-800">
                     <tr>
@@ -511,6 +807,8 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
                       <th className="p-2">Enrollment</th>
                       <th className="p-2">Candidate</th>
                       <th className="p-2">Email</th>
+                      <th className="p-2">Interviewer</th>
+                      <th className="p-2">Interview Link</th>
                       <th className="p-2">Validation Status</th>
                     </tr>
                   </thead>
@@ -525,8 +823,22 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
                           {row.data.enrollmentNo || 'MISSING'}
                         </td>
                         <td className="p-2 text-slate-300">{row.data.fullName || 'MISSING'}</td>
-                        <td className="p-2 text-slate-400 truncate max-w-[140px]">
+                        <td className="p-2 text-slate-400 truncate max-w-[130px]">
                           {row.data.email || 'MISSING'}
+                        </td>
+                        <td className="p-2 text-slate-300 truncate max-w-[120px]">
+                          {row.data.interviewerName || (
+                            <span className="text-red-400 font-medium">MISSING</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-slate-400 truncate max-w-[160px] font-mono text-[11px]">
+                          {row.data.interviewLink ? (
+                            <span className="text-blue-400 underline truncate block max-w-[160px]" title={row.data.interviewLink}>
+                              {row.data.interviewLink}
+                            </span>
+                          ) : (
+                            <span className="text-red-400 font-medium">MISSING</span>
+                          )}
                         </td>
                         <td className="p-2">
                           {row.isValid ? (
@@ -582,6 +894,18 @@ export function ImportWizardModal({ isOpen, onClose, drives }: ImportWizardModal
                     {commitResult.failedCount}
                   </span>
                 </div>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleDownloadUniqueXls}
+                  className="border-slate-700 bg-slate-900/80 hover:bg-slate-800 text-slate-200"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  Download Unique Cleaned Data (.xlsx)
+                </Button>
               </div>
             </div>
           )}

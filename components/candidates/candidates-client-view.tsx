@@ -22,7 +22,9 @@ import {
   Copy,
   Check,
   AlertCircle,
+  Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface CandidatesClientViewProps {
   initialCandidates: CandidateRosterItem[];
@@ -85,6 +87,43 @@ export function CandidatesClientView({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  }
+
+  function handleExportRosterToXlsx() {
+    if (filtered.length === 0) return;
+
+    const data = filtered.map((c, i) => ({
+      'S.No': i + 1,
+      'Student Name': c.fullName,
+      'Enrollment Number': c.enrollmentNo,
+      'Email Address': c.email,
+      'Branch': c.branch,
+      'Year of Study': c.yearOfStudy,
+      'Interviewer Name': c.interviewerName,
+      'Interview Link': c.interviewLink,
+      'Assigned Panel': c.panelName,
+      'Interview Slot': c.slotFormatted,
+      'Status': c.status,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    worksheet['!cols'] = [
+      { wch: 6 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 38 },
+      { wch: 24 },
+      { wch: 20 },
+      { wch: 14 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Students');
+    XLSX.writeFile(workbook, `recruitx_students_roster_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   return (
@@ -151,9 +190,19 @@ export function CandidatesClientView({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportRosterToXlsx}
+            disabled={filtered.length === 0}
+            className="border-slate-700 hover:bg-slate-800 text-slate-200"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export (.xlsx)
+          </Button>
           <Button variant="primary" size="sm" onClick={() => setIsImportOpen(true)}>
             <Upload className="w-3.5 h-3.5" />
-            Import Students (CSV)
+            Import Students
           </Button>
         </div>
       </div>
@@ -229,6 +278,8 @@ export function CandidatesClientView({
                   <th className="px-4 py-3">Enrollment Number</th>
                   <th className="px-4 py-3">Branch</th>
                   <th className="px-4 py-3">Academic Year</th>
+                  <th className="px-4 py-3">Interviewer</th>
+                  <th className="px-4 py-3">Interview Link</th>
                   <th className="px-4 py-3">Interview Slot</th>
                   <th className="px-4 py-3">Recruitment Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -251,22 +302,26 @@ export function CandidatesClientView({
                       {c.yearOfStudy}
                     </td>
                     <td className="px-4 py-3.5 text-slate-300">
-                      <div className="text-slate-200 font-medium">{c.slotFormatted}</div>
-                      <div className="text-[11px] text-slate-500">{c.panelName}</div>
+                      <div className="font-medium text-slate-200">{c.interviewerName}</div>
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-400">
+                      {c.interviewLink && c.interviewLink.startsWith('http') ? (
+                        <a
+                          href={c.interviewLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center text-blue-400 hover:text-blue-300 underline font-mono text-[11px] max-w-[150px] truncate"
+                          title={c.interviewLink}
+                        >
+                          Join Meeting <ExternalLink className="w-3 h-3 ml-1 shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-slate-500 text-[11px] font-mono">{c.interviewLink}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-slate-300">
-                      <span
-                        className={
-                          c.panelName === 'Unassigned'
-                            ? 'text-amber-400'
-                            : 'text-blue-400 font-medium'
-                        }
-                      >
-                        {c.panelName}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-400 text-[11px]">
-                      {c.slotFormatted}
+                      <div className="text-slate-200 font-medium">{c.slotFormatted}</div>
+                      <div className="text-[11px] text-slate-500">{c.panelName}</div>
                     </td>
                     <td className="px-4 py-3.5">
                       <Badge
